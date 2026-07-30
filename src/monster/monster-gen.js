@@ -1,13 +1,58 @@
 import * as THREE from 'three';
 
-// Procedural monster generator with power-scaling appearance law:
-// SMALL = cute, BIG = terrifying
+// ─── DEFINITIONS ──────────────────────────────────────────────────────────────
 
 const SHARED = {
   ambient: new THREE.Color(0.35, 0.35, 0.4),
   lightDir: new THREE.Vector3(0.5, 0.8, 0.3).normalize(),
   lightColor: new THREE.Color(1.0, 0.9, 0.8),
 };
+
+export const MONSTER_DEFS = [
+  {
+    id: 'blob', name: 'Blob', tier: 0,
+    bodyType: 'sphere', legs: 0, arms: 0,
+    baseHealth: 20, baseAttack: 5, baseSpeed: 3,
+    color: 0x88ccaa, eyeSize: 0.12, eyeColor: 0x334466,
+    scale: 0.3, isCute: true, glowColor: 0x88ddff, glowIntensity: 0.2,
+  },
+  {
+    id: 'sprout', name: 'Sprout', tier: 1,
+    bodyType: 'capsule', legs: 2, arms: 0,
+    baseHealth: 50, baseAttack: 13, baseSpeed: 2.7,
+    color: 0x88ccaa, eyeSize: 0.12, eyeColor: 0x334466,
+    scale: 0.7, isCute: true, glowColor: 0x88ddff, glowIntensity: 0.2,
+  },
+  {
+    id: 'imp', name: 'Imp', tier: 2,
+    bodyType: 'humanoid', legs: 2, arms: 2,
+    baseHealth: 80, baseAttack: 21, baseSpeed: 2.4,
+    color: 0x886644, eyeSize: 0.06, eyeColor: 0xff8844,
+    scale: 1.1, isCute: false, glowColor: 0x000000, glowIntensity: 0,
+  },
+  {
+    id: 'brute', name: 'Brute', tier: 3,
+    bodyType: 'humanoid', legs: 2, arms: 2,
+    baseHealth: 110, baseAttack: 29, baseSpeed: 2.1,
+    color: 0x441122, eyeSize: 0.04, eyeColor: 0xff2200,
+    scale: 1.5, isCute: false, glowColor: 0xff4400, glowIntensity: 0.6,
+    hornLength: 0.26, teethSize: 0.065, spikes: 5,
+  },
+  {
+    id: 'titan', name: 'Titan', tier: 4,
+    bodyType: 'giant', legs: 2, arms: 2,
+    baseHealth: 140, baseAttack: 37, baseSpeed: 1.8,
+    color: 0x441122, eyeSize: 0.04, eyeColor: 0xff2200,
+    scale: 1.9, isCute: false, glowColor: 0xff4400, glowIntensity: 0.6,
+    hornLength: 0.32, teethSize: 0.08, spikes: 6,
+  },
+];
+
+export function getMonsterDef(tier) {
+  return MONSTER_DEFS[tier] || MONSTER_DEFS[Math.min(tier, 4)];
+}
+
+// ─── MATERIAL ─────────────────────────────────────────────────────────────────
 
 function makeMonsterMat(color, shadowMult = 0.4, rimMult = 1.5, rimPow = 4.0) {
   const c = new THREE.Color(color);
@@ -53,74 +98,27 @@ function makeMonsterMat(color, shadowMult = 0.4, rimMult = 1.5, rimPow = 4.0) {
   });
 }
 
-// Monster archetypes
-const ARCHETYPES = [
-  { name: 'Blob', bodyType: 'sphere', legs: 0, arms: 0, aggressive: 0.3 },
-  { name: 'Sprout', bodyType: 'capsule', legs: 2, arms: 0, aggressive: 0.4 },
-  { name: 'Imp', bodyType: 'humanoid', legs: 2, arms: 2, aggressive: 0.6 },
-  { name: 'Brute', bodyType: 'humanoid', legs: 2, arms: 2, aggressive: 0.8 },
-  { name: 'Titan', bodyType: 'giant', legs: 2, arms: 2, aggressive: 1.0 },
-];
+// ─── RIG ──────────────────────────────────────────────────────────────────────
 
-// Power tiers: determines SIZE, features, visual scariness
-function getTierConfig(tier) {
-  // tier 0-4, where 0 = cutest, 4 = most terrifying
-  const baseScale = 0.3 + tier * 0.4;
-  const isCute = tier <= 1;
-  const isTerrifying = tier >= 3;
-
-  return {
-    scale: baseScale,
-    color: isCute ? 0x88ccaa : isTerrifying ? 0x441122 : 0x886644,
-    eyeSize: isCute ? 0.12 : isTerrifying ? 0.04 : 0.06,
-    eyeColor: isCute ? 0x334466 : isTerrifying ? 0xff2200 : 0xff8844,
-    hornLength: isCute ? 0 : 0.08 + tier * 0.06,
-    teethSize: isCute ? 0 : 0.02 + tier * 0.015,
-    bodyRoughness: isCute ? 0 : 0.3 + tier * 0.15,
-    spikes: isTerrifying ? 2 + tier : 0,
-    glowColor: isTerrifying ? 0xff4400 : isCute ? 0x88ddff : 0x000000,
-    glowIntensity: isTerrifying ? 0.6 : isCute ? 0.2 : 0,
-  };
-}
-
-export function generateMonster(tier, seed) {
-  // tier: 0 (cute miniblin) to 4 (boss nightmare titan)
-  const archetype = ARCHETYPES[tier] || ARCHETYPES[Math.min(tier, 4)];
-  const config = getTierConfig(tier);
+export function buildMonsterRig(def, seed) {
+  const { tier, name, bodyType, legs, arms, color, eyeSize, eyeColor, scale, isCute, glowColor, glowIntensity } = def;
+  const hornLength = def.hornLength || 0;
+  const spikes = def.spikes || 0;
 
   const root = new THREE.Group();
-  root.userData = {
-    tier,
-    health: 20 + tier * 30,
-    maxHealth: 20 + tier * 30,
-    attackPower: 5 + tier * 8,
-    speed: 3 - tier * 0.3,
-    aggressive: archetype.aggressive,
-    isBoss: tier >= 4,
-    name: archetype.name,
-    hitFlash: 0,
-  };
 
-  // Use standard materials for reliability — body must be clearly visible
   const bodyStdMat = new THREE.MeshStandardMaterial({
-    color: config.color,
-    roughness: 0.5,
-    metalness: 0.1,
-    flatShading: true,
-    emissive: config.glowIntensity > 0 ? new THREE.Color(config.glowColor).multiplyScalar(0.2) : new THREE.Color(0),
+    color, roughness: 0.5, metalness: 0.1, flatShading: true,
+    emissive: glowIntensity > 0 ? new THREE.Color(glowColor).multiplyScalar(0.2) : new THREE.Color(0),
   });
   const bodyStdMat2 = new THREE.MeshStandardMaterial({
-    color: 0x885544,
-    roughness: 0.6,
-    metalness: 0.1,
-    flatShading: true,
+    color: 0x885544, roughness: 0.6, metalness: 0.1, flatShading: true,
   });
 
-  // Legs (bottom at y=0 so feet touch ground)
   const legHeight = 0.25 + tier * 0.06;
   const legY = legHeight / 2;
-  if (archetype.legs > 0) {
-    const legMat = makeMonsterMat(config.color * 0.8 + 0x111111, 0.4, 1.0);
+
+  if (legs > 0) {
     for (let side = -1; side <= 1; side += 2) {
       const leg = new THREE.Mesh(
         new THREE.CylinderGeometry(0.04 + tier * 0.015, 0.05 + tier * 0.02, legHeight, 6),
@@ -133,9 +131,8 @@ export function generateMonster(tier, seed) {
     }
   }
 
-  // Body
   const torsoHeight = 0.35 + tier * 0.08;
-  if (archetype.bodyType === 'sphere' || tier <= 1) {
+  if (bodyType === 'sphere' || isCute) {
     const body = new THREE.Mesh(new THREE.SphereGeometry(0.35 + tier * 0.04, 8, 8), bodyStdMat);
     body.position.y = legY + legHeight / 2 + 0.15;
     body.scale.y = 0.85;
@@ -144,8 +141,6 @@ export function generateMonster(tier, seed) {
     root.userData.bodyMesh = body;
   } else {
     const torsoWidth = 0.25 + tier * 0.08;
-    // Debug: log body position values
-    console.log(`Monster tier ${tier}: legY=${legY}, legH=${legHeight}, torsoH=${torsoHeight}, torso.y=${legY + legHeight / 2 + torsoHeight / 2}`);
     const torso = new THREE.Mesh(
       new THREE.BoxGeometry(torsoWidth * 1.0, torsoHeight, torsoWidth * 0.6),
       bodyStdMat
@@ -162,7 +157,7 @@ export function generateMonster(tier, seed) {
     root.add(head);
     root.userData.headMesh = head;
 
-    if (archetype.arms > 0) {
+    if (arms > 0) {
       const armLen = 0.2 + tier * 0.06;
       for (let side = -1; side <= 1; side += 2) {
         const arm = new THREE.Mesh(
@@ -193,41 +188,35 @@ export function generateMonster(tier, seed) {
     }
   }
 
-  // Eyes — positioned based on body/head
-  const eyeMat = new THREE.MeshBasicMaterial({ color: config.eyeColor });
+  // Eyes
+  const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor });
   const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
   const sphereBodyRadius = 0.35 + tier * 0.04;
   const sphereBodyY = legY + legHeight / 2 + 0.15;
   const headSize = 0.18 + tier * 0.04;
   const headY = legY + legHeight / 2 + torsoHeight + headSize * 0.6;
+  const bodyZ = (bodyType === 'sphere' || isCute) ? sphereBodyRadius * 0.9 : headSize * 0.85;
 
-  const bodyZ = (archetype.bodyType === 'sphere' || tier <= 1)
-    ? sphereBodyRadius * 0.9
-    : headSize * 0.85;
-
-  if (tier <= 1) {
+  if (isCute) {
     for (let side = -1; side <= 1; side += 2) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(config.eyeSize, 8, 8), eyeMat);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(eyeSize, 8, 8), eyeMat);
       eye.position.set(side * 0.12, sphereBodyY + 0.05, bodyZ);
       eye.scale.set(1, 1.1, 0.3);
       root.add(eye);
-
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(config.eyeSize * 0.5, 6, 6), pupilMat);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(eyeSize * 0.5, 6, 6), pupilMat);
       pupil.position.set(side * 0.12, sphereBodyY + 0.05, bodyZ + 0.02);
       pupil.scale.set(1, 1.1, 0.3);
       root.add(pupil);
-
-      const hl = new THREE.Mesh(new THREE.SphereGeometry(config.eyeSize * 0.2, 4, 4), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      const hl = new THREE.Mesh(new THREE.SphereGeometry(eyeSize * 0.2, 4, 4), new THREE.MeshBasicMaterial({ color: 0xffffff }));
       hl.position.set(side * 0.14, sphereBodyY + 0.07, bodyZ + 0.04);
       hl.scale.set(1, 1.1, 0.3);
       root.add(hl);
     }
   } else {
     for (let side = -1; side <= 1; side += 2) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(config.eyeSize, 6, 6), eyeMat);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(eyeSize, 6, 6), eyeMat);
       eye.position.set(side * 0.08, headY, bodyZ);
       root.add(eye);
-
       if (tier >= 3) {
         const brow = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.015, 0.02), new THREE.MeshBasicMaterial({ color: 0x222222 }));
         brow.position.set(side * 0.08, headY + 0.04, bodyZ);
@@ -237,12 +226,12 @@ export function generateMonster(tier, seed) {
     }
   }
 
-  // Horns (terrifying monsters)
-  if (config.hornLength > 0) {
+  // Horns
+  if (hornLength > 0) {
     const hornMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
     for (let side = -1; side <= 1; side += 2) {
-      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.03, config.hornLength, 4), hornMat);
-      const hPos = tier <= 1
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.03, hornLength, 4), hornMat);
+      const hPos = isCute
         ? new THREE.Vector3(side * 0.15, sphereBodyY + sphereBodyRadius * 0.85, sphereBodyRadius * 0.6)
         : new THREE.Vector3(side * 0.1, headY + headSize * 0.65, headSize * 0.7);
       horn.position.copy(hPos);
@@ -252,12 +241,12 @@ export function generateMonster(tier, seed) {
     }
   }
 
-  // Spikes (terrifying)
+  // Spikes
   const bodyCenterY = legY + legHeight / 2 + torsoHeight / 2;
-  if (config.spikes > 0) {
+  if (spikes > 0) {
     const spikeMat = new THREE.MeshStandardMaterial({ color: 0x332222, roughness: 0.8 });
-    for (let i = 0; i < config.spikes * 3; i++) {
-      const angle = (i / (config.spikes * 3)) * Math.PI * 2;
+    for (let i = 0; i < spikes * 3; i++) {
+      const angle = (i / (spikes * 3)) * Math.PI * 2;
       const spike = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.1 + tier * 0.03, 4), spikeMat);
       spike.position.set(
         Math.cos(angle) * 0.4,
@@ -270,12 +259,12 @@ export function generateMonster(tier, seed) {
     }
   }
 
-  // Glow effect (terrifying monsters)
-  if (config.glowIntensity > 0) {
+  // Glow
+  if (glowIntensity > 0) {
     const glowMat = new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Color(config.glowColor) },
-        uIntensity: { value: config.glowIntensity },
+        uColor: { value: new THREE.Color(glowColor) },
+        uIntensity: { value: glowIntensity },
         uTime: { value: 0 },
       },
       vertexShader: `
@@ -303,8 +292,6 @@ export function generateMonster(tier, seed) {
       blending: THREE.AdditiveBlending,
       side: THREE.FrontSide,
     });
-
-    // Add glow aura
     const aura = new THREE.Mesh(new THREE.SphereGeometry(0.4 + tier * 0.15, 10, 10), glowMat);
     aura.position.y = bodyCenterY;
     root.add(aura);
@@ -312,10 +299,26 @@ export function generateMonster(tier, seed) {
     root.userData.aura = aura;
   }
 
-  // Scale the whole monster
-  root.scale.set(config.scale, config.scale, config.scale);
-  root.userData.baseScale = config.scale;
+  root.scale.set(scale, scale, scale);
+  root.userData.baseScale = scale;
 
+  return root;
+}
+
+// ─── RUNTIME ──────────────────────────────────────────────────────────────────
+
+export function generateMonster(tier, seed) {
+  const def = getMonsterDef(tier);
+  const root = buildMonsterRig(def, seed);
+  root.userData.tier = tier;
+  root.userData.def = def;
+  root.userData.health = def.baseHealth;
+  root.userData.maxHealth = def.baseHealth;
+  root.userData.attackPower = def.baseAttack;
+  root.userData.speed = def.baseSpeed;
+  root.userData.isBoss = tier >= 4;
+  root.userData.name = def.name;
+  root.userData.hitFlash = 0;
   return root;
 }
 
@@ -325,7 +328,7 @@ export function updateMonsterAnim(monster, time, isMoving, isAttacking) {
 
   const t = time;
 
-  // Idle breathing — offset from base position (don't overwrite!)
+  // Idle breathing
   const breath = Math.sin(t * 2) * 0.02;
   if (data.bodyMesh) {
     if (data.bodyBaseY === undefined) data.bodyBaseY = data.bodyMesh.position.y;
@@ -341,9 +344,7 @@ export function updateMonsterAnim(monster, time, isMoving, isAttacking) {
   if (isMoving) {
     for (const side of ['L', 'R']) {
       const leg = data[`leg${side}`];
-      if (leg) {
-        leg.rotation.x = Math.sin(t * 8 + (side === 'L' ? 0 : Math.PI)) * 0.3;
-      }
+      if (leg) leg.rotation.x = Math.sin(t * 8 + (side === 'L' ? 0 : Math.PI)) * 0.3;
     }
     if (data.armL && data.armR) {
       data.armL.rotation.x = Math.sin(t * 8) * 0.2;

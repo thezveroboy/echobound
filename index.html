@@ -61,6 +61,7 @@
     }
     .weapon-slot.active { border-color: #e8a87c; box-shadow: 0 0 12px rgba(232,168,124,0.4); }
     .weapon-slot .key { position: absolute; top: -18px; font-size: 0.65rem; color: rgba(232,213,196,0.5); }
+    .weapon-slot .weapon-level { position: absolute; bottom: 1px; right: 3px; font-size: 0.6rem; color: #ffdd88; text-shadow: 0 0 4px rgba(255,221,136,0.5); }
     #controls-hint {
       position: absolute; bottom: 100px; left: 30px;
       color: rgba(232,213,196,0.4); font-size: 0.7rem; line-height: 1.6;
@@ -119,9 +120,50 @@
     }
     #inventory-panel.open { display: block; }
     #inventory-panel h3 { color: #e8d5c4; font-size: 0.8rem; letter-spacing: 0.15em; margin-bottom: 12px; font-weight: 400; }
+    #inventory-panel .section { margin-bottom: 16px; }
+    #inventory-panel .section:last-child { margin-bottom: 0; }
+    #inventory-panel .section-title { color: rgba(232,213,196,0.4); font-size: 0.65rem; letter-spacing: 0.15em; margin-bottom: 8px; text-transform: uppercase; }
     .inv-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(232,213,196,0.06); }
     .inv-row .label { color: rgba(232,213,196,0.5); font-size: 0.7rem; }
     .inv-row .value { color: #e8d5c4; font-size: 0.75rem; }
+    #inv-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 8px;
+    }
+    .inv-slot {
+      aspect-ratio: 1; background: rgba(232,213,196,0.06); border: 1px solid rgba(232,213,196,0.1);
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; color: #e8d5c4; cursor: grab; transition: all 0.15s; position: relative;
+      min-height: 40px;
+    }
+    .inv-slot:hover { border-color: rgba(232,168,124,0.4); background: rgba(232,168,124,0.08); }
+    .inv-slot.has-item { border-color: rgba(232,168,124,0.3); }
+    .inv-slot.drag-over { border-color: #e8a87c; background: rgba(232,168,124,0.15); }
+    .inv-slot .qty { position: absolute; bottom: 1px; right: 3px; font-size: 0.55rem; color: rgba(232,213,196,0.5); }
+    #inv-tools { display: flex; gap: 6px; margin-top: 8px; }
+    #inv-tools button {
+      flex: 1; padding: 4px; font-size: 0.65rem; background: rgba(232,213,196,0.06);
+      border: 1px solid rgba(232,213,196,0.1); border-radius: 4px; color: #e8d5c4; cursor: pointer;
+    }
+    #inv-tools button:hover { background: rgba(232,168,124,0.1); border-color: rgba(232,168,124,0.3); }
+    #inv-slot.dragging { opacity: 0.4; }
+    #drag-ghost {
+      position: fixed; pointer-events: none; z-index: 1000;
+      font-size: 1.2rem; transform: translate(-50%, -50%);
+      display: none;
+    }
+    #equip-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 12px;
+    }
+    .equip-slot {
+      background: rgba(232,213,196,0.08); border: 1px solid rgba(232,213,196,0.15);
+      border-radius: 6px; padding: 6px 8px; display: flex; align-items: center; gap: 6px;
+      cursor: grab; min-height: 32px; transition: all 0.15s; position: relative;
+    }
+    .equip-slot:hover { border-color: rgba(232,168,124,0.4); background: rgba(232,168,124,0.08); }
+    .equip-slot.drag-over { border-color: #e8a87c; background: rgba(232,168,124,0.15); }
+    .equip-slot .equip-label { color: rgba(232,213,196,0.4); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; }
+    .equip-slot .equip-icon { color: #e8d5c4; font-size: 0.75rem; margin-left: auto; }
+    .equip-slot.has-item .equip-label { color: rgba(232,213,196,0.7); }
   </style>
 </head>
 <body>
@@ -159,13 +201,25 @@
     <div id="interact-hint">Press E to interact</div>
     <button id="inventory-btn">🎒</button>
     <div id="inventory-panel">
-      <h3>✦ EQUIPMENT</h3>
-      <div class="inv-row"><span class="label">Head</span><span class="value" id="inv-head">—</span></div>
-      <div class="inv-row"><span class="label">Dress</span><span class="value" id="inv-dress">—</span></div>
-      <div class="inv-row"><span class="label">Legwear</span><span class="value" id="inv-legs">—</span></div>
-      <div class="inv-row"><span class="label">Footwear</span><span class="value" id="inv-feet">—</span></div>
-      <div class="inv-row"><span class="label">Weapon</span><span class="value" id="inv-weapon">—</span></div>
+      <div class="section">
+        <h3>✦ EQUIPMENT</h3>
+        <div id="equip-grid">
+          <div class="equip-slot" data-equip="headwear"><span class="equip-label">Hair</span><span class="equip-icon" id="equip-headwear"></span></div>
+          <div class="equip-slot" data-equip="dress"><span class="equip-label">Body</span><span class="equip-icon" id="equip-dress"></span></div>
+          <div class="equip-slot" data-equip="legwear"><span class="equip-label">Legs</span><span class="equip-icon" id="equip-legwear"></span></div>
+          <div class="equip-slot" data-equip="armwear"><span class="equip-label">Arms</span><span class="equip-icon" id="equip-armwear"></span></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">Inventory</div>
+        <div id="inv-grid"></div>
+        <div id="inv-tools">
+          <button id="inv-sort-btn">Sort</button>
+          <button id="inv-drop-btn">Drop</button>
+        </div>
+      </div>
     </div>
+    <div id="drag-ghost"></div>
   </div>
 
   <script type="module" src="/src/main.js"></script>

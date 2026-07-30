@@ -37,6 +37,14 @@ export function fbm(x, y, octaves = 4, seed = 0) {
   return value / maxVal;
 }
 
+export function seededRandom(seed) {
+  let s = seed | 0;
+  return function () {
+    s = (s * 1664525 + 1013904223) | 0;
+    return (s >>> 0) / 4294967296;
+  };
+}
+
 export function ridgedNoise(x, y, octaves = 4, seed = 0) {
   let value = 0;
   let amplitude = 1;

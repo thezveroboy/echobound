@@ -2,20 +2,22 @@
 
 **Open-World Action-RPG** — a third-person roguelike built with Three.js.
 
-You are a wandering knight in an infinite procedural world. Fight monsters, open treasure chests, collect weapons, and survive.
+You are a wandering female knight in an infinite procedural world. Fight monsters, open treasure chests, collect weapons, and survive.
 
-![comfy-photo](https://github.com/thezveroboy/echobound/blob/main/img1.jpg)
-![comfy-photo](https://github.com/thezveroboy/echobound/blob/main/img2.jpg)
-![comfy-photo](https://github.com/thezveroboy/echobound/blob/main/img3.jpg)
+![echobound](img07.jpg)
+![echobound](img08.jpg)
+![echobound](img09.jpg)
 
 ## Features
 
 - Infinite procedural world with multiple biomes
 - Third-person camera (RMB drag to orbit)
 - Cel-shaded monsters with 5 tiers + bosses
-- 6 weapon types: Sword, Greatsword, Polearm, Bow, Catalyst, Dagger
-- Treasure chests with loot (weapons, coins, healing)
+- 6 weapon types: Sword, Greatsword, Polearm, Bow, Catalyst, Dagger with upgrade system
+- Treasure chests with loot (weapons, coins, healing, clothes)
 - Interactive wardrobe system for the heroine
+- Collectable loot for healing (apples, shrooms)
+- Sound system
 
 ## How to Run
 

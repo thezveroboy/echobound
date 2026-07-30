@@ -51,12 +51,12 @@ function makeWeaponMat(color, emissive = false) {
 }
 
 export const WEAPONS = [
-  { id: 'sword', name: 'Sword', icon: '🗡️', damage: 12, speed: 1.2, range: 1.8, type: 'melee', color: 0x88bbdd, desc: 'Balanced steel blade' },
-  { id: 'greatsword', name: 'Greatsword', icon: '⚔️', damage: 25, speed: 0.6, range: 2.5, type: 'melee', color: 0xcc8844, desc: 'Slow but devastating' },
-  { id: 'polearm', name: 'Polearm', icon: '🔱', damage: 15, speed: 1.0, range: 3.0, type: 'melee', color: 0x88cc88, desc: 'Long reach' },
-  { id: 'bow', name: 'Bow', icon: '🏹', damage: 18, speed: 0.9, range: 15, type: 'ranged', color: 0xddbb66, desc: 'Precise ranged attacks' },
-  { id: 'catalyst', name: 'Catalyst', icon: '🔮', damage: 20, speed: 0.8, range: 12, type: 'magic', color: 0xbb88ee, desc: 'Arcane projectiles' },
-  { id: 'dagger', name: 'Dagger', icon: '🗡', damage: 8, speed: 1.8, range: 1.2, type: 'melee', color: 0xaaaaaa, desc: 'Lightning fast strikes' },
+  { id: 'sword', name: 'Sword', icon: '🗡️', damage: 12, speed: 1.2, range: 1.8, type: 'melee', color: 0x88bbdd, desc: 'Balanced steel blade', startup: 0.15, active: 0.2, recovery: 0.25, postureDmg: 8 },
+  { id: 'greatsword', name: 'Greatsword', icon: '⚔️', damage: 25, speed: 0.6, range: 2.5, type: 'melee', color: 0xcc8844, desc: 'Slow but devastating', startup: 0.35, active: 0.3, recovery: 0.45, postureDmg: 20 },
+  { id: 'polearm', name: 'Polearm', icon: '🔱', damage: 15, speed: 1.0, range: 3.0, type: 'melee', color: 0x88cc88, desc: 'Long reach', startup: 0.2, active: 0.25, recovery: 0.3, postureDmg: 12 },
+  { id: 'bow', name: 'Bow', icon: '🏹', damage: 18, speed: 0.9, range: 15, type: 'ranged', color: 0xddbb66, desc: 'Precise ranged attacks', startup: 0.25, active: 0.05, recovery: 0.3, postureDmg: 5 },
+  { id: 'catalyst', name: 'Catalyst', icon: '🔮', damage: 20, speed: 0.8, range: 12, type: 'magic', color: 0xbb88ee, desc: 'Arcane projectiles', startup: 0.3, active: 0.1, recovery: 0.35, postureDmg: 10 },
+  { id: 'dagger', name: 'Dagger', icon: '🗡', damage: 8, speed: 1.8, range: 1.2, type: 'melee', color: 0xaaaaaa, desc: 'Lightning fast strikes', startup: 0.08, active: 0.12, recovery: 0.15, postureDmg: 5 },
 ];
 
 export function createWeaponMesh(weaponId, owner = null) {

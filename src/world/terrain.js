@@ -26,13 +26,14 @@ export function computeHeight(wx, wz, seed) {
 
 export function generateHeightMap(seed, cx = 0, cz = 0) {
   const heights = [];
+  const count = Math.round(T_SIZE / T_RES) + 1;
   const originX = cx * T_SIZE;
   const originZ = cz * T_SIZE;
-  for (let z = 0; z < T_SIZE; z += T_RES) {
+  for (let zi = 0; zi < count; zi++) {
     const row = [];
-    for (let x = 0; x < T_SIZE; x += T_RES) {
-      const wx = originX + x - T_SIZE / 2;
-      const wz = originZ + z - T_SIZE / 2;
+    const wz = originZ + zi * T_RES - T_SIZE / 2;
+    for (let xi = 0; xi < count; xi++) {
+      const wx = originX + xi * T_RES - T_SIZE / 2;
       row.push(computeHeight(wx, wz, seed));
     }
     heights.push(row);
@@ -46,14 +47,20 @@ function smoothstep(edge0, edge1, x) {
 }
 
 export function biomesForPosition(x, z, seed) {
-  const nx = x * 0.015;
-  const nz = z * 0.015;
+  const nx = x * 0.01;
+  const nz = z * 0.01;
   const moisture = fbm(nx + 30, nz + 30, 3, seed + 500);
   const temp = fbm(nx + 60, nz + 60, 3, seed + 600);
+  const urban = fbm(nx + 90, nz + 90, 3, seed + 700);
 
-  if (temp < 0.3) return 'snow';
-  if (moisture < 0.3) return 'desert';
-  if (moisture > 0.6 && temp > 0.5) return 'forest';
+  if (urban > 0.62 && temp > 0.35 && moisture > 0.35) return 'ruins';
+  if (temp < 0.25) return 'snow';
+  if (moisture < 0.25) return 'desert';
+  if (moisture > 0.55 && temp > 0.45) return 'forest';
+  // Transition zones — use blended noise to prevent snow-desert adjacency
+  const blend = fbm(nx + 120, nz + 120, 2, seed + 800);
+  if (temp < 0.35 && blend > 0.5) return 'snow';
+  if (moisture < 0.35 && blend < 0.5) return 'desert';
   return 'grassland';
 }
 
@@ -64,7 +71,6 @@ export function buildTerrain(heights, seed, cx = 0, cz = 0) {
   const colors = [];
   const indices = [];
   const uvs = [];
-  const normals = [];
   const offsetX = cx * T_SIZE;
   const offsetZ = cz * T_SIZE;
 
@@ -74,6 +80,7 @@ export function buildTerrain(heights, seed, cx = 0, cz = 0) {
     forest: [0.3, 0.6, 0.25],
     desert: [0.8, 0.7, 0.4],
     snow: [0.9, 0.92, 0.95],
+    ruins: [0.55, 0.53, 0.48],
   };
 
   const biomeAccents = {
@@ -81,6 +88,7 @@ export function buildTerrain(heights, seed, cx = 0, cz = 0) {
     forest: [0.4, 0.7, 0.3],
     desert: [0.85, 0.75, 0.45],
     snow: [0.95, 0.96, 1.0],
+    ruins: [0.6, 0.58, 0.52],
   };
 
   for (let z = 0; z < cols; z++) {
@@ -105,6 +113,16 @@ export function buildTerrain(heights, seed, cx = 0, cz = 0) {
         base = base.map(c => c * 0.7);
       }
 
+      // Road patches in ruins biome
+      if (biome === 'ruins') {
+        const roadNoise = fbm(wx * 0.03, wz * 0.03, 2, seed + 800);
+        if (roadNoise < 0.35) {
+          base = base.map(c => c * 0.65);
+        } else if (roadNoise < 0.45) {
+          base = base.map(c => c * 0.8);
+        }
+      }
+
       // Slight random variation
       const v = hash(wx * 0.1, wz * 0.1, seed + 999) * 0.06 - 0.03;
       colors.push(base[0] + v, base[1] + v, base[2] + v);
@@ -125,18 +143,35 @@ export function buildTerrain(heights, seed, cx = 0, cz = 0) {
     }
   }
 
-  // Compute normals
+  // Compute normals analytically (seamless across chunk boundaries)
+  const normals = [];
+  const eps = 0.1;
+  for (let z = 0; z < cols; z++) {
+    for (let x = 0; x < rows; x++) {
+      const wx = offsetX - T_SIZE / 2 + x * T_RES;
+      const wz = offsetZ - T_SIZE / 2 + z * T_RES;
+      const hL = computeHeight(wx - eps, wz, seed);
+      const hR = computeHeight(wx + eps, wz, seed);
+      const hD = computeHeight(wx, wz - eps, seed);
+      const hU = computeHeight(wx, wz + eps, seed);
+      const dx = (hR - hL) / (2 * eps);
+      const dz = (hU - hD) / (2 * eps);
+      const invLen = 1 / Math.sqrt(dx * dx + 1 + dz * dz);
+      normals.push(-dx * invLen, invLen, -dz * invLen);
+    }
+  }
+
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setIndex(indices);
-  geo.computeVertexNormals();
 
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uColor: { value: new THREE.Color(0.5, 0.7, 0.4) },
-      uShadowColor: { value: new THREE.Color(0.3, 0.4, 0.25) },
+      uShadowColor: { value: new THREE.Color(0.5, 0.48, 0.4) },
       uHighlightColor: { value: new THREE.Color(0.7, 0.9, 0.6) },
       uRimPower: { value: 2.0 },
       uRimColor: { value: new THREE.Color(0.7, 0.85, 0.6) },
@@ -216,6 +251,9 @@ export function buildTerrain(heights, seed, cx = 0, cz = 0) {
 
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
+  mesh.frustumCulled = true;
+  mesh.matrixAutoUpdate = false;
+  mesh.updateMatrix();
   return mesh;
 }
 

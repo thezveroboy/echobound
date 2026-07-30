@@ -1,166 +1,114 @@
 import * as THREE from 'three';
 
-// Anime-style heroine builder with modular wardrobe
-const SHARED = {
-  ambient: new THREE.Color(0.35, 0.35, 0.4),
-  lightDir: new THREE.Vector3(0.5, 0.8, 0.3).normalize(),
-  lightColor: new THREE.Color(1.0, 0.9, 0.8),
-  rimPower: 3.0,
-  rimColor: new THREE.Color(0.9, 0.85, 1.0),
-};
+// ─── SKIN MATERIAL ───────────────────────────────────────────────────────────
 
-function makeCharMat(baseColor, shadowMult = 0.5, rimMult = 1.3) {
-  const c = new THREE.Color(baseColor);
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: c },
-      uShadowColor: { value: c.clone().multiplyScalar(shadowMult) },
-      uRimColor: { value: c.clone().multiplyScalar(rimMult) },
-      uAmbientLight: { value: SHARED.ambient },
-      uMainLightDir: { value: SHARED.lightDir },
-      uMainLightColor: { value: SHARED.lightColor },
-      uRimPower: { value: SHARED.rimPower },
-    },
-    vertexShader: `
-      varying vec3 vNormal; varying vec3 vViewPosition; varying vec3 vWorldPos;
-      void main() {
-        vNormal = normalize(normalMatrix * normal);
-        vec4 wp = modelMatrix * vec4(position, 1.0);
-        vWorldPos = wp.xyz;
-        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-        vViewPosition = -mvPos.xyz;
-        gl_Position = projectionMatrix * mvPos;
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 uColor; uniform vec3 uShadowColor; uniform vec3 uRimColor;
-      uniform float uRimPower; uniform vec3 uAmbientLight; uniform vec3 uMainLightDir;
-      uniform vec3 uMainLightColor; varying vec3 vNormal; varying vec3 vViewPosition;
-      varying vec3 vWorldPos;
-      void main() {
-        vec3 n = normalize(vNormal);
-        vec3 v = normalize(vViewPosition);
-        float ndotl = dot(n, normalize(uMainLightDir));
-        float band = smoothstep(0.05, 0.4, ndotl);
-        vec3 final = uColor * uAmbientLight + mix(uColor * uShadowColor, uColor, band) * uMainLightColor;
-        float rim = 1.0 - max(0.0, dot(n, v));
-        rim = pow(rim, uRimPower);
-        final += uRimColor * rim * 0.5;
-        // Soft outline
-        float outline = 1.0 - max(0.0, dot(n, v));
-        outline = smoothstep(0.75, 0.8, outline);
-        final *= (1.0 - outline * 0.5);
-        final = pow(final, vec3(0.88));
-        gl_FragColor = vec4(final, 1.0);
-      }
-    `,
+const SKIN_COLOR = 0xffd4c0;
+const SKIN_COLOR2 = 0xfac8b4;
+
+function makeSkinMat(baseColor) {
+  return new THREE.MeshStandardMaterial({
+    color: baseColor,
+    roughness: 0.4,
+    metalness: 0,
   });
 }
+
+// ─── HEROINE ─────────────────────────────────────────────────────────────────
 
 export function buildHeroine() {
   const root = new THREE.Group();
   root.position.set(0, 0, 0);
 
-  const skin = new THREE.MeshStandardMaterial({ color: 0xffecd6, roughness: 0.4, metalness: 0 });
+  const skin = makeSkinMat(SKIN_COLOR);
+  const skin2 = makeSkinMat(SKIN_COLOR2);
 
-  // Body layout (y-up, feet at y=0, height ≈1.15):
-  // legs 0–0.42, hips 0.42–0.52, torso 0.52–0.82 (includes chest),
-  // breasts on torso at y≈0.78, shoulders 0.82–0.88,
-  // neck 0.88–0.94, head center 1.00
+  // Store default skin colors for reset
+  const defaultColors = { skin: SKIN_COLOR, skin2: SKIN_COLOR2 };
+  root.userData._defaultColors = defaultColors;
 
-  // --- Legs (two smooth, longer) ---
+  const parts = {};
+
+  // Legs
+  const legs = [];
   for (let side = -1; side <= 1; side += 2) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.055, 0.42, 12), skin);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.055, 0.42, 14), skin2);
     leg.position.set(side * 0.08, 0.21, 0);
     leg.castShadow = true;
     root.add(leg);
+    legs.push(leg);
   }
+  parts.legs = legs;
 
-  // --- Hips ---
-  const hips = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.21, 0.10, 14), skin);
-  hips.position.y = 0.48;
-  hips.castShadow = true;
-  root.add(hips);
+  // Body (trapezoid)
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.18, 0.44, 4), skin);
+  body.position.y = 0.64;
+  body.scale.z = 0.55;
+  body.castShadow = true;
+  root.add(body);
+  root.userData.torso = body;
+  parts.body = body;
 
-  // --- Torso (waist to upper chest, single piece covers breast area) ---
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.17, 0.30, 14), skin);
-  torso.position.y = 0.68;
-  torso.castShadow = true;
-  root.add(torso);
-  root.userData.torso = torso;
-
-  // --- Breasts ---
+  // Breasts
+  const breasts = [];
   for (let side = -1; side <= 1; side += 2) {
-    const breast = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 14), skin);
-    breast.position.set(side * 0.07, 0.77, 0.10);
-    breast.scale.set(1, 0.85, 0.55);
+    const breast = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.08, 8), skin);
+    breast.position.set(side * 0.06, 0.77, 0.10);
+    breast.rotation.x = Math.PI / 2;
     breast.castShadow = true;
     root.add(breast);
+    breasts.push(breast);
   }
+  parts.breasts = breasts;
 
-  // --- Shoulders ---
-  const shoulders = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.12, 0.06, 14), skin);
-  shoulders.position.y = 0.86;
-  shoulders.castShadow = true;
-  root.add(shoulders);
-
-  // --- Neck ---
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.06, 10), skin);
-  neck.position.y = 0.92;
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.06, 10), makeSkinMat(SKIN_COLOR));
+  neck.position.y = 0.88;
   neck.castShadow = true;
   root.add(neck);
+  parts.neck = neck;
 
-  // --- Head ---
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 18, 18), skin);
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 20), makeSkinMat(SKIN_COLOR));
   head.position.y = 1.00;
   head.scale.set(1, 1.05, 0.88);
   head.castShadow = true;
   root.add(head);
   root.userData.head = head;
+  parts.head = head;
 
-  // --- Hair (anime-style, blue) ---
-  const hair = new THREE.MeshStandardMaterial({ color: 0x88bbdd, roughness: 0.7 });
-  const hDark = new THREE.MeshStandardMaterial({ color: 0x6699bb, roughness: 0.7 });
-  // Main volume on top
-  const vol = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 14), hair);
-  vol.position.set(0, 1.06, -0.02);
-  vol.scale.set(1.06, 0.48, 0.92);
-  vol.castShadow = true;
-  root.add(vol);
-  // Back tail
-  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.06, 0.14, 8), hDark);
-  tail.position.set(0, 0.91, -0.10);
-  tail.rotation.x = -0.2;
-  tail.castShadow = true;
-  root.add(tail);
-  // Front bangs
+  // Arms
+  const arms = [];
   for (let side = -1; side <= 1; side += 2) {
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.02, 0.09, 6), hair);
-    b.position.set(side * 0.04, 1.00, 0.10);
-    b.rotation.x = 0.4;
-    b.rotation.z = side * 0.08;
-    b.castShadow = true;
-    root.add(b);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.032, 0.28, 10), skin2);
+    arm.position.set(side * 0.150, 0.73, 0.01);
+    arm.rotation.z = side * 0.260;
+    arm.rotation.x = -0.06;
+    arm.castShadow = true;
+    root.add(arm);
+    arms.push(arm);
   }
-  // Side strands
-  for (let side = -1; side <= 1; side += 2) {
-    const s = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.028, 0.22, 6), hDark);
-    s.position.set(side * 0.10, 0.91, 0.02);
-    s.rotation.z = side * 0.12;
-    s.rotation.x = 0.04;
-    s.castShadow = true;
-    root.add(s);
-  }
+  parts.arms = arms;
 
-  // --- Eyes ---
-  const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const pupilMat = new THREE.MeshBasicMaterial({ color: 0x445577 });
+  // Hair — short bob (slanted hemisphere)
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0xff88aa, roughness: 0.5 });
+
+  const bob = new THREE.Mesh(new THREE.SphereGeometry(0.15, 20, 20), hairMat);
+  bob.position.set(0, 1.07, -0.04);
+  bob.scale.set(1.05, 0.85, 0.90);
+  bob.rotation.x = -0.08;
+  bob.castShadow = true;
+  root.add(bob);
+  parts.hairMain = bob;
+
+  // Eyes
+  const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const pupilMat = new THREE.MeshPhysicalMaterial({ color: 0x445577, roughness: 0.1, metalness: 0, ior: 1.4, transmission: 0.3 });
   for (let side = -1; side <= 1; side += 2) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 10), white);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), whiteMat);
     eye.position.set(side * 0.055, 1.02, 0.12);
     eye.scale.set(1, 0.9, 0.18);
     root.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), pupilMat);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.025, 10, 10), pupilMat);
     pupil.position.set(side * 0.055, 1.02, 0.13);
     pupil.scale.set(1, 0.9, 0.08);
     root.add(pupil);
@@ -170,328 +118,146 @@ export function buildHeroine() {
     root.add(hl);
   }
 
-  // --- Eyebrows ---
-  const browMat = new THREE.MeshBasicMaterial({ color: 0x667788 });
+  // Eyebrows
   for (let side = -1; side <= 1; side += 2) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.005, 0.01), browMat);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.005, 0.01), new THREE.MeshBasicMaterial({ color: 0x667788 }));
     b.position.set(side * 0.055, 1.04, 0.125);
     b.rotation.z = side * 0.08;
     root.add(b);
   }
 
-  // --- Mouth ---
-  const m = new THREE.Mesh(new THREE.TorusGeometry(0.015, 0.003, 4, 8), new THREE.MeshBasicMaterial({ color: 0xcc8899 }));
-  m.position.set(0, 0.96, 0.125);
-  m.rotation.x = Math.PI / 2;
-  m.rotation.z = 0.08;
-  m.scale.set(1, 0.35, 1);
-  root.add(m);
+  // Mouth
+  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.015, 0.003, 4, 8), new THREE.MeshBasicMaterial({ color: 0xcc8899 }));
+  mouth.position.set(0, 0.96, 0.125);
+  mouth.rotation.x = Math.PI / 2;
+  mouth.rotation.z = 0.08;
+  mouth.scale.set(1, 0.35, 1);
+  root.add(mouth);
 
-  // --- Arms (single piece per arm, hangs from shoulder to mid-thigh) ---
-  for (let side = -1; side <= 1; side += 2) {
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.032, 0.28, 10), skin);
-    arm.position.set(side * 0.165, 0.74, 0.01);
-    arm.rotation.z = side * 0.15;
-    arm.rotation.x = -0.06;
-    arm.castShadow = true;
-    root.add(arm);
-  }
-
-  // --- Wardrobe slots (initially empty) ---
-  root.userData.slots = {
-    headwear: null,
-    dress: null,
-    legwear: null,
-    footwear: null,
-    extra: null,
-  };
-
-  // Apply default dress (disabled — user wants to see bare body first)
-  // equipDress(root, 'seafoam');
-
+  root.userData.parts = parts;
+  root.userData.currentOutfit = { dress: null, legwear: null, armwear: null, headwear: null };
   return root;
 }
 
-// --- Wardrobe System ---
+// ─── BODY PART COLOR ────────────────────────────────────────────────────────
 
-const dressConfigs = {
-  seafoam: { color: 0x7dcec0, trim: 0xa8e6d8, name: 'Seafoam Gown' },
-  crimson: { color: 0xcc5555, trim: 0xee8888, name: 'Crimson Dress' },
-  lavender: { color: 0x9977bb, trim: 0xbb99dd, name: 'Lavender Robe' },
-  solar: { color: 0xdd9944, trim: 0xeecc66, name: 'Solar Mantle' },
-  midnight: { color: 0x334466, trim: 0x5577aa, name: 'Midnight Gown' },
-};
-
-const headwearConfigs = {
-  none: null,
-  crown: { color: 0xddbb55, name: 'Crown' },
-  flower: { color: 0xff7799, name: 'Flower Band' },
-  witch: { color: 0x664488, name: 'Witch Hat' },
-  cat: { color: 0xff8844, name: 'Cat Ears' },
-};
-
-const legwearConfigs = {
-  none: null,
-  stockings: { color: 0x223344, name: 'Stockings' },
-  thighhighs: { color: 0xffffff, name: 'Thigh-Highs' },
-  leggings: { color: 0x444455, name: 'Leggings' },
-};
-
-const footwearConfigs = {
-  none: null,
-  sandals: { color: 0x886644, name: 'Sandals' },
-  boots: { color: 0x554433, name: 'Boots' },
-  heels: { color: 0xdd88aa, name: 'Heels' },
-};
-
-const extraConfigs = {
-  none: null,
-  halo: { color: 0xffee88, name: 'Halo' },
-  wings: { color: 0xffffff, name: 'Angel Wings' },
-  ribbon: { color: 0xff4466, name: 'Ribbon' },
-  tail: { color: 0xcc8844, name: 'Fox Tail' },
-};
-
-export function getDressList() {
-  return Object.entries(dressConfigs).map(([k, v]) => ({ id: k, ...v }));
-}
-export function getHeadwearList() {
-  return Object.entries(headwearConfigs).map(([k, v]) => ({ id: k, ...(v || { name: 'None', color: 0 }) }));
-}
-export function getLegwearList() {
-  return Object.entries(legwearConfigs).map(([k, v]) => ({ id: k, ...(v || { name: 'None', color: 0 }) }));
-}
-export function getFootwearList() {
-  return Object.entries(footwearConfigs).map(([k, v]) => ({ id: k, ...(v || { name: 'None', color: 0 }) }));
-}
-export function getExtraList() {
-  return Object.entries(extraConfigs).map(([k, v]) => ({ id: k, ...(v || { name: 'None', color: 0 }) }));
+export function setBodyPartColor(root, slot, hexColor) {
+  const parts = root.userData.parts;
+  if (!parts) return;
+  const c = new THREE.Color(hexColor);
+  switch (slot) {
+    case 'dress':
+      if (parts.body) {
+        parts.body.material = parts.body.material.clone();
+        parts.body.material.color.set(c);
+      }
+      parts.breasts.forEach(b => {
+        b.material = b.material.clone();
+        b.material.color.set(c);
+      });
+      break;
+    case 'legwear':
+      parts.legs.forEach(l => {
+        l.material = l.material.clone();
+        l.material.color.set(c);
+      });
+      break;
+    case 'armwear':
+      parts.arms.forEach(a => {
+        a.material = a.material.clone();
+        a.material.color.set(c);
+      });
+      break;
+    case 'headwear':
+      if (parts.hairMain) parts.hairMain.material.color.set(c);
+      break;
+  }
 }
 
-function equipDress(root, dressId) {
-  // Remove old dress
-  if (root.userData.slots.dress) {
-    root.remove(root.userData.slots.dress);
+export function clearBodyPartColor(root, slot) {
+  const def = root.userData._defaultColors;
+  if (!def) return;
+  switch (slot) {
+    case 'dress':
+      setBodyPartColor(root, 'dress', def.skin);
+      break;
+    case 'legwear':
+      parts.legs.forEach(l => { l.material = makeSkinMat(def.skin2); });
+      break;
+    case 'armwear':
+      parts.arms.forEach(a => { a.material = makeSkinMat(def.skin2); });
+      break;
+    case 'headwear':
+      setBodyPartColor(root, 'headwear', 0xff88aa);
+      break;
   }
-  if (!dressConfigs[dressId]) return;
-
-  const cfg = dressConfigs[dressId];
-  const dressMat = makeCharMat(cfg.color, 0.45);
-  const trimMat = makeCharMat(cfg.trim, 0.5);
-
-  const group = new THREE.Group();
-
-  // Skirt — hips to mid-thigh
-  const skirtGeo = new THREE.CylinderGeometry(0.22, 0.38, 0.25, 10);
-  const skirt = new THREE.Mesh(skirtGeo, dressMat);
-  skirt.position.y = 0.38;
-  skirt.castShadow = true;
-  group.add(skirt);
-
-  // Bodice — torso, waist to bust
-  const bodiceGeo = new THREE.CylinderGeometry(0.16, 0.2, 0.26, 10);
-  const bodice = new THREE.Mesh(bodiceGeo, trimMat);
-  bodice.position.y = 0.72;
-  bodice.castShadow = true;
-  group.add(bodice);
-
-  // Ribbon / bow at waist
-  const bowMat = makeCharMat(cfg.trim, 0.4);
-  for (let side = -1; side <= 1; side += 2) {
-    const bow = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.025, 0.02), bowMat);
-    bow.position.set(side * 0.1, 0.56, -0.06);
-    bow.rotation.y = side * 0.3;
-    group.add(bow);
-  }
-
-  root.add(group);
-  root.userData.slots.dress = group;
-  root.userData.currentDress = dressId;
-}
-
-function equipHeadwear(root, headwearId) {
-  if (root.userData.slots.headwear) {
-    root.remove(root.userData.slots.headwear);
-  }
-  if (!headwearConfigs[headwearId] || headwearId === 'none') return;
-
-  const cfg = headwearConfigs[headwearId];
-  const mat = makeCharMat(cfg.color, 0.45);
-  const head = root.userData.head;
-  const headPos = head.position.clone();
-  const group = new THREE.Group();
-
-  if (headwearId === 'crown') {
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.02, 6, 12), mat);
-    band.position.y = headPos.y + 0.06;
-    band.rotation.x = Math.PI / 2;
-    group.add(band);
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2;
-      const point = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.05, 4), mat);
-      point.position.set(Math.cos(a) * 0.14, headPos.y + 0.09, Math.sin(a) * 0.14);
-      group.add(point);
-    }
-  } else if (headwearId === 'flower') {
-    const petalMat = new THREE.MeshStandardMaterial({ color: 0xff88aa, flatShading: true });
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2;
-      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.025, 5, 5), petalMat);
-      petal.position.set(Math.cos(a) * 0.035, headPos.y + 0.05, Math.sin(a) * 0.035 + 0.1);
-      petal.scale.set(1, 0.3, 0.5);
-      group.add(petal);
-    }
-    const center = new THREE.Mesh(new THREE.SphereGeometry(0.015, 6, 6), new THREE.MeshStandardMaterial({ color: 0xffee44 }));
-    center.position.set(0, headPos.y + 0.05, 0.1);
-    group.add(center);
-  } else if (headwearId === 'witch') {
-    const brim = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.02, 6, 12), mat);
-    brim.position.y = headPos.y + 0.08;
-    brim.rotation.x = Math.PI / 2;
-    group.add(brim);
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.16, 8), mat);
-    cone.position.y = headPos.y + 0.16;
-    group.add(cone);
-  } else if (headwearId === 'cat') {
-    for (let side = -1; side <= 1; side += 2) {
-      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 4), mat);
-      ear.position.set(side * 0.07, headPos.y + 0.1, 0.06);
-      ear.rotation.x = -0.2;
-      ear.rotation.z = side * 0.2;
-      group.add(ear);
-    }
-  }
-
-  root.add(group);
-  root.userData.slots.headwear = group;
-  root.userData.currentHeadwear = headwearId;
-}
-
-function equipLegwear(root, legwearId) {
-  if (root.userData.slots.legwear) {
-    root.remove(root.userData.slots.legwear);
-  }
-  if (!legwearConfigs[legwearId] || legwearId === 'none') return;
-
-  const cfg = legwearConfigs[legwearId];
-  const mat = makeCharMat(cfg.color, 0.5, 1.2);
-  const group = new THREE.Group();
-
-  for (let side = -1; side <= 1; side += 2) {
-    if (legwearId === 'stockings' || legwearId === 'thighhighs') {
-      const h = legwearId === 'stockings' ? 0.25 : 0.35;
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, h, 6), mat);
-      leg.position.set(side * 0.08, 0.15 + h / 2, 0);
-      group.add(leg);
-    } else {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.048, 0.35, 6), mat);
-      leg.position.set(side * 0.08, 0.25, 0);
-      group.add(leg);
-    }
-  }
-
-  root.add(group);
-  root.userData.slots.legwear = group;
-  root.userData.currentLegwear = legwearId;
-}
-
-function equipFootwear(root, footwearId) {
-  if (root.userData.slots.footwear) {
-    root.remove(root.userData.slots.footwear);
-  }
-  if (!footwearConfigs[footwearId] || footwearId === 'none') return;
-
-  const cfg = footwearConfigs[footwearId];
-  const mat = makeCharMat(cfg.color, 0.5);
-  const group = new THREE.Group();
-
-  for (let side = -1; side <= 1; side += 2) {
-    if (footwearId === 'sandals') {
-      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.012, 0.06), mat);
-      sole.position.set(side * 0.08, 0.02, 0.01);
-      group.add(sole);
-    } else if (footwearId === 'boots') {
-      const boot = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.1, 6), mat);
-      boot.position.set(side * 0.08, 0.05, 0);
-      group.add(boot);
-    } else if (footwearId === 'heels') {
-      const heel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.05, 6), mat);
-      heel.position.set(side * 0.08, 0.04, 0.03);
-      group.add(heel);
-      const toe = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.012, 0.02), mat);
-      toe.position.set(side * 0.08, 0.03, -0.02);
-      group.add(toe);
-    }
-  }
-
-  root.add(group);
-  root.userData.slots.footwear = group;
-  root.userData.currentFootwear = footwearId;
-}
-
-function equipExtra(root, extraId) {
-  if (root.userData.slots.extra) {
-    root.remove(root.userData.slots.extra);
-  }
-  if (!extraConfigs[extraId] || extraId === 'none') return;
-
-  const cfg = extraConfigs[extraId];
-  const mat = makeCharMat(cfg.color, 0.4);
-  const group = new THREE.Group();
-
-  if (extraId === 'halo') {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.015, 8, 16), mat);
-    ring.position.y = 1.25;
-    ring.rotation.x = Math.PI / 3;
-    ring.material.transparent = true;
-    ring.material.blending = THREE.AdditiveBlending;
-    group.add(ring);
-  } else if (extraId === 'wings') {
-    const wingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
-    for (let side = -1; side <= 1; side += 2) {
-      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.02), wingMat);
-      wing.position.set(side * 0.2, 0.85, 0);
-      wing.rotation.z = side * 0.4;
-      wing.rotation.y = side * 0.3;
-      group.add(wing);
-    }
-  } else if (extraId === 'ribbon') {
-    const ribbonMat = new THREE.MeshStandardMaterial({ color: 0xff4466 });
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.015, 6, 12), ribbonMat);
-    band.position.y = 0.72;
-    band.scale.set(1, 0.6, 0.3);
-    group.add(band);
-  } else if (extraId === 'tail') {
-    const tailMat = new THREE.MeshStandardMaterial({ color: 0xcc8844 });
-    for (let i = 0; i < 5; i++) {
-      const seg = new THREE.Mesh(new THREE.SphereGeometry(0.025 - i * 0.003, 6, 6), tailMat);
-      seg.position.set(0, 0.45 - i * 0.04, 0.2 + i * 0.03);
-      seg.scale.set(1, 1, 1 + i * 0.2);
-      group.add(seg);
-    }
-  }
-
-  root.add(group);
-  root.userData.slots.extra = group;
-  root.userData.currentExtra = extraId;
 }
 
 export function setWardrobe(root, slot, id) {
-  switch (slot) {
-    case 'dress': equipDress(root, id); break;
-    case 'headwear': equipHeadwear(root, id); break;
-    case 'legwear': equipLegwear(root, id); break;
-    case 'footwear': equipFootwear(root, id); break;
-    case 'extra': equipExtra(root, id); break;
-  }
+  // Clothing items are applied via setBodyPartColor; this tracks the selection
+  root.userData.currentOutfit[slot] = id;
 }
 
 export function getCurrentOutfit(root) {
-  return {
-    dress: root.userData.currentDress || 'seafoam',
-    headwear: root.userData.currentHeadwear || 'none',
-    legwear: root.userData.currentLegwear || 'none',
-    footwear: root.userData.currentFootwear || 'none',
-    extra: root.userData.currentExtra || 'none',
-  };
+  return root.userData.currentOutfit || { dress: null, legwear: null, armwear: null, headwear: null };
+}
+
+// ─── CLOTHING CATALOG ───────────────────────────────────────────────────────
+
+const COLORS = {
+  red: 0xcc3333, orange: 0xdd7733, yellow: 0xddbb33, green: 0x44aa44,
+  teal: 0x339999, blue: 0x3366cc, purple: 0x8844aa, pink: 0xdd6699,
+  white: 0xeeeeee, black: 0x333333, gray: 0x999999,
+};
+
+export const CLOTHING_CATALOG = [
+  // Dresses
+  { id: 'dress_red', slot: 'dress', color: COLORS.red, name: 'Red Dress' },
+  { id: 'dress_orange', slot: 'dress', color: COLORS.orange, name: 'Orange Dress' },
+  { id: 'dress_yellow', slot: 'dress', color: COLORS.yellow, name: 'Yellow Dress' },
+  { id: 'dress_green', slot: 'dress', color: COLORS.green, name: 'Green Dress' },
+  { id: 'dress_teal', slot: 'dress', color: COLORS.teal, name: 'Teal Dress' },
+  { id: 'dress_blue', slot: 'dress', color: COLORS.blue, name: 'Blue Dress' },
+  { id: 'dress_purple', slot: 'dress', color: COLORS.purple, name: 'Purple Dress' },
+  { id: 'dress_pink', slot: 'dress', color: COLORS.pink, name: 'Pink Dress' },
+  { id: 'dress_white', slot: 'dress', color: COLORS.white, name: 'White Dress' },
+  { id: 'dress_black', slot: 'dress', color: COLORS.black, name: 'Black Dress' },
+  { id: 'dress_gray', slot: 'dress', color: COLORS.gray, name: 'Gray Dress' },
+  // Legwear
+  { id: 'legs_red', slot: 'legwear', color: COLORS.red, name: 'Red Legwear' },
+  { id: 'legs_orange', slot: 'legwear', color: COLORS.orange, name: 'Orange Legwear' },
+  { id: 'legs_yellow', slot: 'legwear', color: COLORS.yellow, name: 'Yellow Legwear' },
+  { id: 'legs_green', slot: 'legwear', color: COLORS.green, name: 'Green Legwear' },
+  { id: 'legs_teal', slot: 'legwear', color: COLORS.teal, name: 'Teal Legwear' },
+  { id: 'legs_blue', slot: 'legwear', color: COLORS.blue, name: 'Blue Legwear' },
+  { id: 'legs_purple', slot: 'legwear', color: COLORS.purple, name: 'Purple Legwear' },
+  { id: 'legs_pink', slot: 'legwear', color: COLORS.pink, name: 'Pink Legwear' },
+  { id: 'legs_white', slot: 'legwear', color: COLORS.white, name: 'White Legwear' },
+  { id: 'legs_black', slot: 'legwear', color: COLORS.black, name: 'Black Legwear' },
+  // Armwear
+  { id: 'arms_red', slot: 'armwear', color: COLORS.red, name: 'Red Armwear' },
+  { id: 'arms_orange', slot: 'armwear', color: COLORS.orange, name: 'Orange Armwear' },
+  { id: 'arms_yellow', slot: 'armwear', color: COLORS.yellow, name: 'Yellow Armwear' },
+  { id: 'arms_green', slot: 'armwear', color: COLORS.green, name: 'Green Armwear' },
+  { id: 'arms_teal', slot: 'armwear', color: COLORS.teal, name: 'Teal Armwear' },
+  { id: 'arms_blue', slot: 'armwear', color: COLORS.blue, name: 'Blue Armwear' },
+  { id: 'arms_purple', slot: 'armwear', color: COLORS.purple, name: 'Purple Armwear' },
+  { id: 'arms_pink', slot: 'armwear', color: COLORS.pink, name: 'Pink Armwear' },
+  { id: 'arms_white', slot: 'armwear', color: COLORS.white, name: 'White Armwear' },
+  { id: 'arms_black', slot: 'armwear', color: COLORS.black, name: 'Black Armwear' },
+  // Hair dyes
+  { id: 'hair_red', slot: 'headwear', color: COLORS.red, name: 'Red Hair' },
+  { id: 'hair_orange', slot: 'headwear', color: COLORS.orange, name: 'Orange Hair' },
+  { id: 'hair_yellow', slot: 'headwear', color: COLORS.yellow, name: 'Yellow Hair' },
+  { id: 'hair_green', slot: 'headwear', color: COLORS.green, name: 'Green Hair' },
+  { id: 'hair_teal', slot: 'headwear', color: COLORS.teal, name: 'Teal Hair' },
+  { id: 'hair_blue', slot: 'headwear', color: COLORS.blue, name: 'Blue Hair' },
+  { id: 'hair_purple', slot: 'headwear', color: COLORS.purple, name: 'Purple Hair' },
+  { id: 'hair_pink', slot: 'headwear', color: COLORS.pink, name: 'Pink Hair' },
+  { id: 'hair_white', slot: 'headwear', color: COLORS.white, name: 'White Hair' },
+  { id: 'hair_black', slot: 'headwear', color: COLORS.black, name: 'Black Hair' },
+];
+
+export function getClothingItem(id) {
+  return CLOTHING_CATALOG.find(c => c.id === id) || null;
 }
