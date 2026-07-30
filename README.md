@@ -4,15 +4,9 @@
 
 You are a wandering female knight in an infinite procedural world. Fight monsters, open treasure chests, collect weapons, and survive.
 
-<<<<<<< HEAD
 ![echobound](img07.jpg)
 ![echobound](img08.jpg)
 ![echobound](img09.jpg)
-=======
-![echobound](img01.jpg)
-![echobound](img02.jpg)
-![echobound](img03.jpg)
->>>>>>> 7e042ab37821de8e9fc1af66471a4010fed0f36c
 
 ## Features
 
